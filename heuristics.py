@@ -1,6 +1,17 @@
 # heuristics.py
 from collections import deque
 
+# heuristics.py
+# (No final do arquivo, depois da h2_knight_distance)
+
+def h0_dijkstra(current_pos, end_pos, min_cost):
+    """
+    H0: Heurística Zero (Equivalente ao Dijkstra).
+    A heurística mais fraca possível, mas perfeitamente admissível.
+    h(n) = 0.
+    """
+    return 0
+    
 def h1_manhattan(current_pos, end_pos, min_cost):
     """
     H1: Heurística Fraca (Distância de Manhattan).

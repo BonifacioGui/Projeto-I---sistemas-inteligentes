@@ -1,5 +1,4 @@
 # a_star.py
-
 import heapq
 import math
 
@@ -25,6 +24,7 @@ class Node:
         # Nós com menor custo F são considerados "menores".
         return self.f < other.f
 
+
 def _reconstruct_path(end_node):
     """
     Função auxiliar para reconstruir o caminho a partir do nó final,
@@ -37,19 +37,13 @@ def _reconstruct_path(end_node):
         current = current.parent
     return path[::-1]  # Retorna o caminho do início ao fim
 
-# a_star.py
-# (importações e a classe Node devem estar aqui em cima...)
-
-# (a função _reconstruct_path também deve estar aqui...)
-
-
 def a_star_search(board, start_pos, end_pos, heuristic_func):
     """
     Implementação do algoritmo A* (como um GERADOR) para 
     encontrar o caminho de menor custo, retornando o estado a cada passo.
     """
     
-    # 1. Inicialização (igual a antes)
+    # 1. Inicialização
     start_node = Node(start_pos)
     end_node = Node(end_pos)
     
@@ -65,33 +59,26 @@ def a_star_search(board, start_pos, end_pos, heuristic_func):
         # Pega o nó com o menor custo F da fila
         current_f, current_node = heapq.heappop(open_list)
         
-        # Se já exploramos, pulamos
         if current_node.position in closed_set:
             continue
             
-        # Marca o nó atual como explorado
         closed_set.add(current_node.position)
         nodes_expanded += 1
         
-        # --- NOVO: Parte da Visualização ---
-        # Extrai as posições da lista aberta (que é um heap de tuplas)
-        open_set_pos = {node.position for f, node in open_list}
-        
         # "Pausa" a função e entrega o estado atual para o visualizador desenhar
         yield {
-            'open': open_set_pos, 
+            'open': {node.position for f, node in open_list}, 
             'closed': closed_set,
             'current': current_node.position
         }
-        # --- FIM DA PARTE NOVA ---
         
         # 3. Verificação de Objetivo
         if current_node == end_node:
             path = _reconstruct_path(current_node)
-            # Quando termina, o 'return' encerra o gerador
-            return path, nodes_expanded
+            # --- CORRIGIDO ---
+            return path, nodes_expanded, g_costs
 
-        # 4. Expansão de Vizinhos (igual a antes)
+        # 4. Expansão de Vizinhos
         knight_moves = [
             (1, 2), (1, -2), (-1, 2), (-1, -2),
             (2, 1), (2, -1), (-2, 1), (-2, -1)
@@ -109,6 +96,7 @@ def a_star_search(board, start_pos, end_pos, heuristic_func):
             new_g = current_node.g + board.get_cost(neighbor_pos)
             
             if neighbor_pos not in g_costs or new_g < g_costs[neighbor_pos]:
+                
                 g_costs[neighbor_pos] = new_g
                 h = heuristic_func(neighbor_pos, end_pos, board.min_cost)
                 f = new_g + h
@@ -121,4 +109,5 @@ def a_star_search(board, start_pos, end_pos, heuristic_func):
                 heapq.heappush(open_list, (f, neighbor_node))
 
     # 5. Caminho não encontrado
-    return None, nodes_expanded
+    # --- CORRIGIDO ---
+    return None, nodes_expanded, g_costs
