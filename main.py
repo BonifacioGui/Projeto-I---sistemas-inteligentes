@@ -3,7 +3,8 @@
 from board import Board
 from visualization import Visualizer
 from a_star import a_star_search
-from heuristics import h0_dijkstra, h2_knight_distance
+# --- MUDANÇA: Importa apenas as 2 heurísticas ---
+from heuristics import h1_chebyshev, h2_knight_distance
 
 # --- Configuração Principal ---
 START_POS = (1, 1)
@@ -16,17 +17,16 @@ def main():
     # 1. Cria o tabuleiro lógico
     board = Board()
     
-    # 2. Define as heurísticas que o visualizador pode usar
+    # --- MUDANÇA: Define as DUAS heurísticas ---
     heuristic_options = {
-        "H0 (Dijkstra)": h0_dijkstra,
-        "H2 (Cavalo)": h2_knight_distance
+        "H1 (Chebyshev)": h1_chebyshev,
+        "H2 (Cavalo)": h2_knight_distance,
     }
     
-    # 3. Cria o visualizador, passando o tabuleiro para ele
+    # 3. Cria o visualizador
     visualizer = Visualizer(board)
     
-    # 4. Inicia o loop principal da aplicação, injetando
-    #    as posições, as heurísticas e a função de busca.
+    # 4. Inicia o loop principal
     visualizer.run(
         start_pos=START_POS,
         end_pos=END_POS,

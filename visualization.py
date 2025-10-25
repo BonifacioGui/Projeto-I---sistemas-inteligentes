@@ -1,291 +1,333 @@
-# visualization.py
+"""
+visualization_final_v8.py
+Visualizador A* com tabuleiro maior e toggles separados para listas.
+- DURANTE busca: Azul (Aberta), Verde Musgo (Fechada).
+- APÓS busca: Terreno + Caminho.
+    - Tecla [V] mostra/oculta área Verde Musgo (Fechada Final).
+    - Tecla [O] mostra/oculta área Azul Claro (Aberta Final).
+- Mantém Heatmap G, Gráfico, Sidebar.
+"""
 
 import pygame
 import math
+import os
+import time
 
-# --- Constantes de Visualização ---
-SCREEN_WIDTH = 640
-SCREEN_HEIGHT = 700  # Altura para o tabuleiro + área de texto
+# Layout
+BOARD_PIXEL = 720
+SIDEBAR_WIDTH = 260
+SCREEN_WIDTH = BOARD_PIXEL + SIDEBAR_WIDTH
+SCREEN_HEIGHT = 740
 GRID_SIZE = 8
-CELL_SIZE = SCREEN_WIDTH // GRID_SIZE
+CELL_SIZE = BOARD_PIXEL // GRID_SIZE # Agora 90
 
-# --- Cores (Paleta Preto e Branco) ---
-COLORS = {
-    # Cores do Tabuleiro (Tradicional)
-    "BOARD_LIGHT": (255, 255, 255), # Branco
-    "BOARD_DARK": (0, 0, 0),        # Preto
-    "TERRAIN_BARREIRA": (60, 0, 0), # Vermelho-sangue (para destacar no preto/branco)
-    
-    # Marcadores
-    "START_BORDER": (0, 180, 0),       # Verde Escuro
-    "END_BORDER": (220, 0, 0),         # Vermelho Brilhante
-    "PATH": (70, 0, 130),          # Roxo "Deep Purple"
-    
-    # Indicadores da Busca
-    # --- MUDANÇA: Cor do ponto para VERDE ---
-    "CLOSED_DOT": (0, 200, 0),       # Verde vivo 
-    
-    # UI
-    "GRID_LINES": (128, 128, 128),   # Cinza médio
-    "TEXT": (0, 0, 0),           # Preto
-    "BACKGROUND_UI": (245, 245, 245) # Fundo da UI
+# --- Paleta de Cores ---
+PALETTE = {
+    # Cores de Terreno
+    'terrain_road': (192, 192, 192), # Cinza
+    'terrain_land': (210, 180, 140), # Marrom Claro
+    'terrain_mud': (139, 69, 19),    # Marrom Escuro
+    'terrain_block': (60, 0, 0),     # Vermelho-sangue/Preto
+
+    # Cores da Busca (Preenchimento Sólido)
+    'open_fill': (135, 206, 250),    # Azul Céu Claro
+    'closed_fill': (85, 107, 47),     # Verde Musgo Escuro (DarkOliveGreen)
+
+    # Cores do Resultado
+    'path': (255, 255, 0),        # Amarelo Brilhante
+    'start_border': (0, 255, 0),    # Verde Brilhante
+    'end_border': (255, 0, 0),      # Vermelho Brilhante
+
+    # UI & Gráfico
+    'panel': (37, 41, 47),        # Fundo do Sidebar
+    'grid_line': (60, 60, 60),    # Linhas da grade escuras
+    'text': (230, 234, 240),      # Texto claro (sidebar)
+    'text_dark': (0, 0, 0),       # Texto escuro (heatmap/gráfico)
+    'muted': (150, 155, 165),    # Texto secundário
+    'accent': (255, 200, 80),    # Destaque
+    'bg_chart': (245, 245, 245), # Fundo claro gráfico
+    'bar_h1': (255, 160, 122),    # Cor barra H1
+    'bar_h2': (120, 220, 140),    # Cor barra H2
 }
 
+# Paths
+DEFAULT_KNIGHT_PATHS = ['assets/knight.png', 'knight.png', './knight.png']
+
+
 class Visualizer:
-    def __init__(self, board):
-        pygame.init()
-        pygame.font.init() 
-        
-        pygame.display.set_caption("A* - Caminho Tático do Cavalo")
-        
+    def __init__(self, board, *, fps=60):
+        pygame.init(); pygame.font.init()
+        pygame.display.set_caption('A* — Tactical Knight')
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        self.board = board
-        self.clock = pygame.time.Clock()
-        
-        # Fontes
-        self.font_main = pygame.font.SysFont('Arial', 22) # Fonte um pouco menor para caber
-        self.font_stats = pygame.font.SysFont('Arial', 18)
-        self.font_small = pygame.font.SysFont('Arial', 14) # Para o mapa de custo
-        
-        # Carregar imagem do cavalo
-        try:
-            self.knight_image = pygame.image.load('knight.png').convert_alpha()
-            self.knight_image = pygame.transform.scale(self.knight_image, (CELL_SIZE - 10, CELL_SIZE - 10))
-            self.knight_image_offset = (CELL_SIZE - self.knight_image.get_width()) // 2
-        except pygame.error:
-            print("Erro: Imagem 'knight.png' não encontrada. O cavalo não será desenhado.")
-            self.knight_image = None
-        
-        # Mapeia custos de terreno para as cores de fundo
-        self.cost_to_color_map = {
-            board.costs["Estrada"]: None, # 'None' usa o padrão xadrez
-            board.costs["Terra"]: None, # 'None' usa o padrão xadrez
-            board.costs["Lama"]: None, # 'None' usa o padrão xadrez
-            board.costs["Barreira"]: COLORS["TERRAIN_BARREIRA"],
-        }
-    
-    def _get_chess_color(self, x, y):
-        """ Retorna a cor base (clara/escura) do xadrez. """
-        if (x + y) % 2 == 0:
-            return COLORS["BOARD_LIGHT"]
-        else:
-            return COLORS["BOARD_DARK"]
+        self.clock = pygame.time.Clock(); self.board = board; self.fps = fps
 
-    def _draw_text(self, text, position, font, color=COLORS["TEXT"], center=False):
-        """ Helper para desenhar texto na tela. """
-        text_surface = font.render(text, True, color)
-        if center:
-            rect = text_surface.get_rect(center=position)
-            self.screen.blit(text_surface, rect)
-        else:
-            self.screen.blit(text_surface, position)
+        # Fonts
+        self.title_font = pygame.font.SysFont('Arial', 26, bold=True)
+        self.main_font = pygame.font.SysFont('Arial', 18)
+        self.small_font = pygame.font.SysFont('Arial', 14)
+        self.chart_font = pygame.font.SysFont('Arial', 16)
 
-    def _draw_board(self):
-        """ Desenha o mapa de terreno (camada base). """
-        # Limpa a tela inteira com a cor de fundo da UI
-        self.screen.fill(COLORS["BACKGROUND_UI"]) 
-        
+        # Load knight image
+        self.knight_img = None
+        for p in DEFAULT_KNIGHT_PATHS:
+            if os.path.exists(p):
+                try:
+                    img = pygame.image.load(p).convert_alpha()
+                    target = CELL_SIZE - 20 # Ajusta padding
+                    self.knight_img = pygame.transform.smoothscale(img, (target, target))
+                    break
+                except Exception as e: print(f"Erro imagem {p}: {e}"); self.knight_img = None
+
+        # Terrain color map
+        self.cost_to_color = {
+            board.costs['Estrada']: PALETTE['terrain_road'], board.costs['Terra']: PALETTE['terrain_land'],
+            board.costs['Lama']: PALETTE['terrain_mud'], board.costs['Barreira']: PALETTE['terrain_block'], }
+
+        # State initialization
+        self.reset_state()
+
+    def reset_state(self):
+        self.open_set=set(); self.closed_set=set(); self.current=None; self.final_path=None
+        self.g_costs={}; self.nodes_expanded=0; self.search_running=False; self.search_generator=None
+        self.results={}; self.start_pos=None; self.end_pos=None; self.current_heuristic_name=''
+        self.animation_start=None; self.show_g_map=False; self.view_mode='search'
+        # --- NOVO: Estados para os Toggles ---
+        self.show_closed_list_toggle = False
+        self.show_open_list_toggle = False # Novo toggle para Aberta
+        self.last_closed_set = set()
+        self.last_open_set = set()           # Novo para armazenar Aberta final
+
+    # ------------------------------- Drawing Helpers -------------------------------
+    def _draw_text(self, text, pos, font, color):
+        surf = font.render(text, True, color); self.screen.blit(surf, pos)
+
+    def _draw_text_center(self, text, center_pos, font, color):
+         surf = font.render(text, True, color); rect = surf.get_rect(center=center_pos)
+         self.screen.blit(surf, rect)
+
+    def _get_terrain_color(self, pos):
+        cost = self.board.get_cost(pos)
+        return self.cost_to_color.get(cost, (255, 255, 255))
+
+    # --- MUDANÇA: Função unificada de desenho ---
+    def _draw_board_and_search_state(self):
+        """ Desenha o tabuleiro. Aplica cores da busca SE apropriado (dinâmico ou toggle). """
         for y in range(GRID_SIZE):
             for x in range(GRID_SIZE):
+                pos = (x, y)
                 rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                cost = self.board.get_cost((x, y))
-                
-                # Define a cor base da célula
-                color = self.cost_to_color_map.get(cost)
-                if color is None: # Se for 'None', usa o padrão xadrez
-                    color = self._get_chess_color(x, y)
-                
-                pygame.draw.rect(self.screen, color, rect)
-                pygame.draw.rect(self.screen, COLORS["GRID_LINES"], rect, 1)
 
-    def _draw_search_state(self, search_state):
-        """ Desenha os indicadores da busca (pontos verdes da lista fechada). """
-        
-        dot_radius = CELL_SIZE // 10
-        for pos in search_state['closed']:
-            center_x = pos[0] * CELL_SIZE + CELL_SIZE // 2
-            center_y = pos[1] * CELL_SIZE + CELL_SIZE // 2
-            pygame.draw.circle(self.screen, COLORS["CLOSED_DOT"], (center_x, center_y), dot_radius)
+                # 1. Desenha a cor base do terreno PRIMEIRO
+                base_color = self._get_terrain_color(pos)
+                pygame.draw.rect(self.screen, base_color, rect)
 
-    def _draw_g_cost_map(self, g_costs, path):
-        """ Desenha o mapa de calor dos custos G sobre o caminho. """
-        if not path:
-            return
+                # 2. Desenha cores da busca POR CIMA, se aplicável
+                draw_color = None
+                # Se busca rodando (dinâmico)
+                if self.search_running:
+                    if pos in self.closed_set and pos != self.start_pos and pos != self.end_pos:
+                        draw_color = PALETTE['closed_fill'] # Verde Musgo
+                    elif pos in self.open_set and pos != self.start_pos and pos != self.end_pos:
+                        draw_color = PALETTE['open_fill']   # Azul Claro
+                # Se busca parada (toggles)
+                else:
+                    # Desenha Fechada (Verde Musgo) se V ligado
+                    if self.show_closed_list_toggle and pos in self.last_closed_set and pos != self.start_pos and pos != self.end_pos:
+                         draw_color = PALETTE['closed_fill']
+                    # Desenha Aberta (Azul Claro) se O ligado (sobrescreve Verde se ambos ligados)
+                    if self.show_open_list_toggle and pos in self.last_open_set and pos != self.start_pos and pos != self.end_pos:
+                         draw_color = PALETTE['open_fill']
 
-        path_g_costs = [g_costs.get(pos, 0) for pos in path]
-        max_g = max(path_g_costs)
-        if max_g == 0: max_g = 1 
-        
-        for pos in path:
-            g = g_costs.get(pos, 0)
-            heat_ratio = g / max_g
-            
-            heat_color = (255, 255 - int(255 * heat_ratio), 0)
-            
-            rect = pygame.Rect(pos[0] * CELL_SIZE, pos[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-            s = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
-            s.fill((*heat_color, 120)) 
-            self.screen.blit(s, rect.topleft)
-            
-            self._draw_text(f"{g:.1f}", rect.center, self.font_small, (0,0,0), center=True)
+                # Aplica a cor da busca se uma foi definida
+                if draw_color:
+                    pygame.draw.rect(self.screen, draw_color, rect)
 
-    def _draw_path(self, path):
-        """ Desenha o caminho final encontrado. """
-        if not path or len(path) < 2:
-            return
-            
-        points = []
-        for pos in path:
-            center_x = pos[0] * CELL_SIZE + CELL_SIZE // 2
-            center_y = pos[1] * CELL_SIZE + CELL_SIZE // 2
-            points.append((center_x, center_y))
-            
-        pygame.draw.lines(self.screen, COLORS["PATH"], False, points, 6) 
+                # Grade desenhada depois para ficar por cima de tudo
 
-    def _draw_markers(self, start_pos, end_pos, current_knight_pos):
-        """ Desenha Início, Fim e o Cavalo. """
-        
-        start_rect = pygame.Rect(start_pos[0] * CELL_SIZE, start_pos[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-        end_rect = pygame.Rect(end_pos[0] * CELL_SIZE, end_pos[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-        pygame.draw.rect(self.screen, COLORS["START_BORDER"], start_rect, 5)
-        pygame.draw.rect(self.screen, COLORS["END_BORDER"], end_rect, 5)
-        
-        if self.knight_image and current_knight_pos:
-            knight_x = current_knight_pos[0] * CELL_SIZE + self.knight_image_offset
-            knight_y = current_knight_pos[1] * CELL_SIZE + self.knight_image_offset
-            self.screen.blit(self.knight_image, (knight_x, knight_y))
+    def _draw_grid(self):
+        color = PALETTE['grid_line']
+        for y in range(GRID_SIZE + 1): pygame.draw.line(self.screen, color, (0, y*CELL_SIZE), (BOARD_PIXEL, y*CELL_SIZE), 1)
+        for x in range(GRID_SIZE + 1): pygame.draw.line(self.screen, color, (x*CELL_SIZE, 0), (x*CELL_SIZE, BOARD_PIXEL), 1)
 
+    def _draw_path(self):
+        if not self.final_path or len(self.final_path) < 2: return
+        points = [(p[0]*CELL_SIZE+CELL_SIZE//2, p[1]*CELL_SIZE+CELL_SIZE//2) for p in self.final_path]
+        pygame.draw.lines(self.screen, PALETTE['path'], False, points, 6) # Amarelo
+
+    def _draw_g_heatmap(self):
+        if not self.final_path or not self.g_costs: return
+        path_g = [self.g_costs.get(p,0) for p in self.final_path if p in self.g_costs]; max_g = max(path_g) if path_g else 1
+        for pos in self.final_path:
+            g = self.g_costs.get(pos, 0); ratio = min(1.0, g / max_g) if max_g > 0 else 0
+            r, g_col, b = 255, 255 - int(255 * ratio), 0
+            r,g_col,b = max(0,min(255,r)), max(0,min(255,g_col)), max(0,min(255,b))
+            s = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA); s.fill((r, g_col, b, 170))
+            self.screen.blit(s, (pos[0]*CELL_SIZE, pos[1]*CELL_SIZE))
+            center = (pos[0]*CELL_SIZE+CELL_SIZE//2, pos[1]*CELL_SIZE+CELL_SIZE//2)
+            self._draw_text_center(f"{g:.1f}", center, self.small_font, PALETTE['text_dark'])
+            pygame.draw.rect(self.screen, PALETTE['grid_line'], (pos[0]*CELL_SIZE, pos[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE), 1)
+
+    def _draw_markers_and_knight(self, t):
+        pad = 5
+        if self.start_pos: start_r = pygame.Rect(self.start_pos[0]*CELL_SIZE, self.start_pos[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE); pygame.draw.rect(self.screen, PALETTE['start_border'], start_r, pad)
+        if self.end_pos: end_r = pygame.Rect(self.end_pos[0]*CELL_SIZE, self.end_pos[1]*CELL_SIZE, CELL_SIZE, CELL_SIZE); pygame.draw.rect(self.screen, PALETTE['end_border'], end_r, pad)
+        knight_pos = None
+        if self.final_path and self.animation_start: elapsed=time.time()-self.animation_start; step_t=0.18; steps=len(self.final_path); idx = max(0, min(steps - 1, int(elapsed // step_t))); knight_pos = self.final_path[idx]
+        elif self.current: knight_pos = self.current
+        elif self.start_pos: knight_pos = self.start_pos
+        if knight_pos: self._blit_knight_at(knight_pos)
+
+    def _blit_knight_at(self, pos):
+        if not pos: return
+        cx, cy = pos[0]*CELL_SIZE+CELL_SIZE//2, pos[1]*CELL_SIZE+CELL_SIZE//2
+        if self.knight_img: rect = self.knight_img.get_rect(center=(cx, cy)); self.screen.blit(self.knight_img, rect.topleft)
+        else: pygame.draw.circle(self.screen, PALETTE['accent'], (cx,cy), CELL_SIZE//4); pygame.draw.circle(self.screen, (255,255,255), (cx,cy), CELL_SIZE//12)
+
+    # --- Sidebar UI (Atualizada com tecla O) ---
+    def _draw_sidebar(self):
+        pygame.draw.rect(self.screen, PALETTE['panel'], (BOARD_PIXEL, 0, SIDEBAR_WIDTH, SCREEN_HEIGHT))
+        x0, y = BOARD_PIXEL + 20, 20
+        self._draw_text('A* Tactical Knight', (x0, y), self.title_font, PALETTE['text']); y += 35
+        self._draw_text('Visualização e comparação', (x0, y), self.small_font, PALETTE['muted']); y += 15
+        self._draw_text('de heurísticas A*', (x0, y), self.small_font, PALETTE['muted'])
+        y_info, line_h, section_sp = 120, 20, 35
+        info = [('Heurística', self.current_heuristic_name), ('Nó Atual', str(self.current) if self.current else '-'),
+                ('Nós Expandidos', str(self.nodes_expanded)),
+                ('Custo Final', f"{self.g_costs.get(self.final_path[-1],0):.2f}" if self.final_path and self.g_costs else '-'),
+                ('Comp. Caminho', str(len(self.final_path)-1) if self.final_path else '-'), ]
+        for label, value in info:
+            self._draw_text(label + ':', (x0, y_info), self.small_font, PALETTE['muted'])
+            self._draw_text(value, (x0+5, y_info+line_h), self.main_font, PALETTE['text']); y_info += section_sp
+        y_ctrls = y_info + 40
+        self._draw_text('Controles', (x0, y_ctrls), self.main_font, PALETTE['accent']); y_ctrls += 30
+        ctrl_sp = 25
+        # --- MUDANÇA: Adiciona tecla O ---
+        controls = ['[1] H1 (Cheby)   [2] H2 (Cavalo)', '[ESPAÇO]        - Iniciar Busca',
+                    '[G]                  - Mapa de Custo G',
+                    '[V]                  - Mostrar Exploração (Verde)',
+                    '[O]                  - Mostrar Candidatos (Azul)', # Nova tecla
+                    '[C]                  - Ver Gráfico Comp.',
+                    '[R]                  - Reset / Voltar', '[ESC]             - Voltar ao Tabuleiro', ]
+        for c_text in controls: self._draw_text(c_text, (x0, y_ctrls), self.small_font, PALETTE['muted']); y_ctrls += ctrl_sp
+
+    # --- Gráfico (sem mudanças) ---
+    def _draw_chart_view(self, heuristic_options):
+        # (Código do gráfico permanece o mesmo da versão anterior)
+        self.screen.fill(PALETTE['bg_chart']); title_y, sub_y = 40, 80
+        self._draw_text_center('Comparação de Eficiência', (SCREEN_WIDTH / 2, title_y), self.title_font, PALETTE['text_dark'])
+        self._draw_text_center('Nós Expandidos (Menor é Melhor)', (SCREEN_WIDTH / 2, sub_y), self.main_font, PALETTE['text_dark'])
+        names=list(heuristic_options.keys()); results_data={n: self.results.get(n,{}) for n in names}
+        have_data=all(isinstance(r,dict) and r.get('nodes',0)>0 for r in results_data.values())
+        if not have_data:
+            self._draw_text_center("Execute AMBAS as heurísticas ([1], [2]) para comparar.", (SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 50), self.main_font, PALETTE['text_dark'])
+            self._draw_text_center('[R] Voltar', (SCREEN_WIDTH/2, SCREEN_HEIGHT - 60), self.main_font, PALETTE['text_dark']); return
+        nodes=[results_data[n].get('nodes',0) for n in names]; max_n=max(nodes) if nodes else 1
+        bar_w, bar_h, base_y, n_bars = 180, 280, sub_y + 280 + 80, len(names)
+        total_w = n_bars*bar_w; total_sp=100; chart_w=total_w+(n_bars-1)*total_sp
+        start_x=(SCREEN_WIDTH-chart_w)/2; colors=[PALETTE.get('bar_h1'), PALETTE.get('bar_h2')]
+        for i, n in enumerate(names):
+            bx=start_x+i*(bar_w+total_sp); node_val=results_data[n].get('nodes',0)
+            bh=(node_val/max_n)*bar_h if max_n>0 else 0; by=base_y-bh; color=colors[i%len(colors)]
+            pygame.draw.rect(self.screen, color, (bx, by, bar_w, bh), border_radius=6)
+            self._draw_text_center(str(node_val), (bx+bar_w/2, by-20), self.main_font, PALETTE['text_dark'])
+            self._draw_text_center(n, (bx+bar_w/2, base_y+25), self.chart_font, PALETTE['text_dark'])
+            info_y, info_sp = base_y + 50, 20
+            details = [ f"Tempo: {results_data[n].get('time', 0):.1f} ms", f"Custo: {results_data[n].get('cost', 0):.2f}", f"H Ini: {results_data[n].get('initial_h', 0):.2f}" ]
+            for j, d in enumerate(details): self._draw_text_center(d, (bx+bar_w/2, info_y+j*info_sp), self.small_font, PALETTE['text_dark'])
+        if len(names)==2:
+             res1, res2 = results_data[names[0]], results_data[names[1]]
+             win_n=names[0] if res1.get('nodes', float('inf')) < res2.get('nodes', float('inf')) else names[1]
+             los_n=names[1] if win_n == names[0] else names[0]; conc1, conc2 = "", ""
+             if res1.get('nodes',0)==res2.get('nodes',0): conc1="Mesma eficiência."
+             else:
+                 diff=abs(res1.get('nodes',0)-res2.get('nodes',0)); los_nodes=results_data[los_n].get('nodes',1)
+                 perc=(diff/los_nodes)*100 if los_nodes>0 else 0; conc1=f"{win_n} mais eficiente."
+                 conc2=f"({perc:.1f}% redução vs {los_n})."
+             conc1_y = info_y + len(details) * info_sp + 40
+             self._draw_text_center(conc1, (SCREEN_WIDTH/2, conc1_y), self.main_font, PALETTE['text_dark'])
+             if conc2: self._draw_text_center(conc2, (SCREEN_WIDTH/2, conc1_y+25), self.chart_font, PALETTE['muted'])
+        self._draw_text_center('[R] Voltar', (SCREEN_WIDTH/2, SCREEN_HEIGHT-60), self.main_font, PALETTE['text_dark'])
+
+
+    # ------------------------------ Main loop ---------------------------------
     def run(self, start_pos, end_pos, heuristic_options, search_function):
-        """ Loop principal da visualização. """
-        running = True
-        
-        heuristic_names = list(heuristic_options.keys())
-        current_heuristic_index = 0
-        current_heuristic_name = heuristic_names[current_heuristic_index]
-        current_heuristic_func = heuristic_options[current_heuristic_name]
-        
-        search_generator = None
-        search_state = {'open': set(), 'closed': set(), 'current': start_pos}
-        final_path = None
-        nodes_expanded = 0
-        g_costs = {} 
-        
-        search_running = False
-        show_g_map = False 
-        
-        animation_delay = 25 
-        last_update_time = pygame.time.get_ticks()
+        self.reset_state(); self.start_pos=start_pos; self.end_pos=end_pos
+        self.results = {name: None for name in heuristic_options.keys()}
+        h_names=list(heuristic_options.keys())
+        if len(h_names)<2: raise ValueError('>= 2 heurísticas')
+        curr_idx=0; self.current_heuristic_name=h_names[curr_idx]
+        self.current_heuristic_func=heuristic_options[self.current_heuristic_name]
+        pulse_t, start_t = 0.0, 0; running = True; last_update_t = pygame.time.get_ticks()
 
         while running:
-            current_time = pygame.time.get_ticks()
+            now = pygame.time.get_ticks(); dt = self.clock.tick(self.fps)/1000.0; pulse_t += dt
+            # --- Event Handling ---
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT: running = False
+                elif ev.type == pygame.KEYDOWN:
+                    if ev.key == pygame.K_r:
+                        if self.view_mode=='chart': self.view_mode='search'; print("Voltando.")
+                        else: self.reset_state(); self.start_pos=start_pos; self.end_pos=end_pos; self.results={n:None for n in h_names}; self.current_heuristic_name=h_names[0]; self.current_heuristic_func=heuristic_options[self.current_heuristic_name]; self.show_g_map=False; self.view_mode='search'; self.show_closed_list_toggle=False; self.show_open_list_toggle=False; print("--- RESETADO ---") # Reseta toggles
+                    elif ev.key == pygame.K_ESCAPE and self.view_mode == 'chart': self.view_mode = 'search'; print("Voltando.")
+                    elif self.view_mode == 'search':
+                        if ev.key == pygame.K_SPACE and not self.search_running: print(f"Iniciando: {self.current_heuristic_name}..."); start_t = time.time(); self.search_generator = search_function(self.board, start_pos, end_pos, self.current_heuristic_func); self.search_running=True; self.final_path=None; self.g_costs={}; self.nodes_expanded=0; self.open_set=set(); self.closed_set=set(); self.current=start_pos; self.animation_start=None; self.show_g_map=False; self.show_closed_list_toggle=False; self.show_open_list_toggle=False # Reseta toggles
+                        elif ev.key>=pygame.K_1 and ev.key<pygame.K_1+len(h_names) and not self.search_running:
+                            curr_idx = ev.key - pygame.K_1
+                            if 0 <= curr_idx < len(h_names): self.current_heuristic_name=h_names[curr_idx]; self.current_heuristic_func=heuristic_options[self.current_heuristic_name]; print(f"Heurística: {self.current_heuristic_name}")
+                        elif ev.key == pygame.K_g and self.final_path: self.show_g_map = not self.show_g_map; print(f"Mapa G: {'On' if self.show_g_map else 'Off'}")
+                        # --- MUDANÇA: Tecla V ---
+                        elif ev.key == pygame.K_v and not self.search_running and self.last_closed_set:
+                             self.show_closed_list_toggle = not self.show_closed_list_toggle
+                             print(f"Mostrar Exploração (Verde Musgo): {'Ligado' if self.show_closed_list_toggle else 'Desligado'}")
+                        # --- MUDANÇA: Tecla O ---
+                        elif ev.key == pygame.K_o and not self.search_running and self.last_open_set:
+                             self.show_open_list_toggle = not self.show_open_list_toggle
+                             print(f"Mostrar Candidatos Finais (Azul): {'Ligado' if self.show_open_list_toggle else 'Desligado'}")
+                        # --- FIM DA MUDANÇA ---
+                        elif ev.key == pygame.K_c and all(r is not None for r in self.results.values()) and not self.search_running:
+                             if all(isinstance(r, dict) and r.get('nodes', 0) > 0 for r in self.results.values()): self.view_mode = 'chart'; print("Gráfico.")
+                             else: print("Execute ambas.")
 
-            # --- Tratamento de Eventos ---
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_SPACE and not search_running:
-                        print(f"Iniciando busca com {current_heuristic_name}...")
-                        search_generator = search_function(
-                            self.board, start_pos, end_pos, current_heuristic_func
-                        )
-                        search_running = True
-                        final_path = None
-                        nodes_expanded = 0
-                        g_costs = {}
-                        show_g_map = False
-                        search_state = {'open': set(), 'closed': set(), 'current': start_pos}
-                    
-                    if event.key == pygame.K_r:
-                        search_generator = None
-                        search_state = {'open': set(), 'closed': set(), 'current': start_pos}
-                        final_path = None
-                        nodes_expanded = 0
-                        g_costs = {}
-                        search_running = False
-                        show_g_map = False
-                        print("--- RESETADO ---")
-                    
-                    if event.key == pygame.K_1 and not search_running:
-                        current_heuristic_index = 0
-                        current_heuristic_name = heuristic_names[current_heuristic_index]
-                        current_heuristic_func = heuristic_options[current_heuristic_name]
-                    
-                    if event.key == pygame.K_2 and len(heuristic_names) > 1 and not search_running:
-                        current_heuristic_index = 1
-                        current_heuristic_name = heuristic_names[current_heuristic_index] 
-                        current_heuristic_func = heuristic_options[current_heuristic_name]
-                    
-                    if event.key == pygame.K_g and final_path:
-                        show_g_map = not show_g_map
-                        print(f"Mapa de Custo G: {'Ligado' if show_g_map else 'Desligado'}")
-
-            # --- Lógica de Busca (Passo a Passo) ---
-            if search_running and search_generator and (current_time - last_update_time > animation_delay):
-                try:
-                    search_state = next(search_generator)
-                    last_update_time = current_time
-                except StopIteration as e:
+            # --- Advance Search ---
+            if self.search_running and self.search_generator and self.view_mode == 'search':
+                if now - last_update_t > 50: # Throttle
                     try:
-                        final_path, nodes_expanded, g_costs = e.value
-                        if final_path:
-                            path_cost = g_costs.get(final_path[-1], 0) # Pega o custo G do nó final
-                            print(f"Caminho encontrado! {nodes_expanded} nós expandidos. Custo: {path_cost:.2f}")
-                        else:
-                            print("Caminho não encontrado.")
-                    except ValueError:
-                        print("Erro: O algoritmo A* não retornou os 3 valores esperados (path, nodes, g_costs).")
-                        final_path, nodes_expanded = None, 0
-                        g_costs = {}
+                        state = next(self.search_generator)
+                        self.open_set=state.get('open',set()); self.closed_set=state.get('closed',set())
+                        self.current=state.get('current',self.current); self.nodes_expanded=len(self.closed_set)
+                        last_update_t = now
+                    except StopIteration as e:
+                        end_t = time.time(); exec_t = (end_t - start_t) * 1000
+                        try:
+                            path, nodes, g_costs, initial_h = e.value
+                            self.final_path=path; self.nodes_expanded=nodes; self.g_costs=g_costs
+                            # --- MUDANÇA: Armazena ambas as listas finais ---
+                            self.last_closed_set = self.closed_set.copy()
+                            self.last_open_set = self.open_set.copy() # Salva a Aberta final
+                            # --- FIM DA MUDANÇA ---
+                            p_cost = 0
+                            if path: p_cost=g_costs.get(path[-1],0); print(f"Fim: {nodes} nós. C:{p_cost:.2f}. H:{initial_h:.2f}. T:{exec_t:.2f} ms"); self.results[self.current_heuristic_name]={'nodes':nodes,'time':exec_t,'cost':p_cost,'initial_h':initial_h}; self.animation_start=time.time() if path else None
+                            else: print(f"Fim: Ñ enc. {nodes} nós. T:{exec_t:.2f} ms"); self.results[self.current_heuristic_name]={'nodes':nodes,'time':exec_t,'cost':float('inf'),'initial_h':initial_h}
+                        except ValueError: print("Erro: A* ñ ret 4 val."); self.final_path=None; self.nodes_expanded=0; self.g_costs={}; self.results[self.current_heuristic_name]=None; self.last_closed_set = set(); self.last_open_set = set()
+                        except Exception as ex: print(f"Erro: {ex}"); self.final_path=None; self.nodes_expanded=0; self.g_costs={}; self.results[self.current_heuristic_name]=None; self.last_closed_set = set(); self.last_open_set = set()
+                        self.search_running=False; self.search_generator=None
+                        # Não limpa open/closed aqui para permitir toggle imediato
 
-                    search_running = False
-                    search_generator = None
+            # --- Draw Frame ---
+            if self.view_mode == 'search':
+                # Ordem: Fundo -> Tabuleiro/Busca -> Grade -> Heatmap -> Caminho -> Marcadores -> Sidebar
+                self.screen.fill(PALETTE.get('bg', (0,0,0)))
+                self._draw_board_and_search_state() # Desenha terreno OU Azul/Verde OU toggles Verde/Azul
+                self._draw_grid()
+                if self.show_g_map and self.final_path: self._draw_g_heatmap()
+                self._draw_path()
+                self._draw_markers_and_knight(pulse_t)
+                self._draw_sidebar()
+            elif self.view_mode == 'chart':
+                self._draw_chart_view(heuristic_options)
 
-            # --- Lógica de Desenho (Camadas) ---
-            
-            # 1. Tabuleiro Base (Sempre o primeiro)
-            self._draw_board() 
-            
-            # 2. Estado da Busca (Pontos verdes)
-            if search_state and not show_g_map:
-                self._draw_search_state(search_state)
-            
-            # 3. Caminho Final
-            if final_path:
-                self._draw_path(final_path)
-            
-            # 4. Mapa de Calor (se ativado)
-            if final_path and show_g_map:
-                self._draw_g_cost_map(g_costs, final_path)
-            
-            # 5. Marcadores (Início, Fim, Cavalo)
-            knight_pos_to_draw = start_pos
-            if final_path:
-                knight_pos_to_draw = final_path[-1] 
-            elif search_state:
-                knight_pos_to_draw = search_state['current'] 
-                
-            self._draw_markers(start_pos, end_pos, knight_pos_to_draw)
-            
-            # 6. UI (Textos)
-            # --- MUDANÇA: Posições 'y' ajustadas para baixo (645 e 670) ---
-            ui_y1 = SCREEN_WIDTH + 5  # Posição Y da primeira linha da UI (645)
-            ui_y2 = SCREEN_WIDTH + 30 # Posição Y da segunda linha da UI (670)
-
-            self._draw_text(f"Heurística: {current_heuristic_name}", (10, ui_y1), self.font_main)
-            self._draw_text(f"Nós Expandidos: {nodes_expanded}", (350, ui_y1), self.font_main)
-            
-            self._draw_text("[1] H0 (Dijkstra)  [2] H2 (Cavalo)", (10, ui_y2), self.font_stats)
-            
-            # Monta o texto de comandos dinamicamente
-            commands_text = "[ESPAÇO] Iniciar  [R] Resetar"
-            if final_path:
-                commands_text += "  [G] Custo G"
-            self._draw_text(commands_text, (350, ui_y2), self.font_stats)
-            
-            # --- Atualização da Tela ---
             pygame.display.flip()
-            self.clock.tick(60) 
 
         pygame.quit()
+
+# --- Fim do Arquivo ---
