@@ -1,6 +1,7 @@
 # board.py
 
 import math
+import random
 
 class Board:
     def __init__(self):
@@ -14,7 +15,7 @@ class Board:
         
         # Um exemplo de tabuleiro 8x8.
         # 0: Estrada, 1: Terra, 2: Lama, 3: Barreira
-        terrain_map = self._generate_default_map()
+        terrain_map = self._generate_random_map()
         
         # Converte o mapa de terrenos para um mapa de custos reais
         terrain_types = list(self.costs.keys())
@@ -26,17 +27,26 @@ class Board:
         # O menor custo possível em uma casa transitável (será útil para a heurística)
         self.min_cost = min(c for c in self.costs.values() if c != math.inf)
 
-    def _generate_default_map(self):
-        terrain_map = [
-            [1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 2, 2, 1, 0, 1],
-            [1, 0, 1, 3, 3, 1, 0, 1],
-            [1, 0, 1, 3, 3, 1, 0, 1],
-            [1, 0, 1, 2, 2, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+    def _generate_random_map(self, size=8):
+        """
+        Gera um mapa de terrenos aleatório 8x8.
+        0: Estrada (0.5)
+        1: Terra (1.0)
+        2: Lama (5.0)
+        3: Barreira (∞)
+        """
+        terrain_map = []
+        for _ in range(size):
+            row = []
+            for _ in range(size):
+                # Probabilidades: Estrada 30%, Terra 40%, Lama 20%, Barreira 10%
+                choice = random.choices(
+                    population=[0, 1, 2, 3],
+                    weights=[0.3, 0.4, 0.2, 0.1],
+                    k=1
+                )[0]
+                row.append(choice)
+            terrain_map.append(row)
         return terrain_map
 
     def get_cost(self, position):
