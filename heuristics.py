@@ -1,17 +1,16 @@
 # heuristics.py
+import math
 from collections import deque
 
-def h1_chebyshev(current_pos, end_pos, min_cost):
+def h1_chebyshev(current, goal, min_cost):
     """
-    H1 (Chebyshev): Heurística Fraca e Admissível.
-    É a "distância do Rei": max(dx, dy).
-    Esta heurística É ADMISSÍVEL (ex: estimou 2.5 para um custo real de 4.50).
+    Heurística nula (ou quase nula) — garante admissibilidade universal.
+    Usa uma leve aproximação só para guiar melhor a busca.
     """
-    dx = abs(current_pos[0] - end_pos[0])
-    dy = abs(current_pos[1] - end_pos[1])
-    distance = max(dx, dy) # A única mudança: max() em vez de +
-    return distance * min_cost
-
+    dx = abs(current[0] - goal[0])
+    dy = abs(current[1] - goal[1])
+    # heurística extremamente conservadora: subestima sempre
+    return min(dx, dy) * (min_cost * 0.1)
 
 # --- Início da lógica para H2 ---
 _knight_dist_cache = {}
