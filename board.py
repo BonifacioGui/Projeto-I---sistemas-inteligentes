@@ -14,16 +14,7 @@ class Board:
         
         # Um exemplo de tabuleiro 8x8.
         # 0: Estrada, 1: Terra, 2: Lama, 3: Barreira
-        terrain_map = [
-            [1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 0, 0, 0, 0, 0, 0, 1],
-            [1, 0, 1, 2, 2, 1, 0, 1],
-            [1, 0, 1, 3, 3, 1, 0, 1],
-            [1, 0, 1, 3, 3, 1, 0, 1],
-            [1, 0, 1, 2, 2, 1, 0, 1],
-            [1, 0, 0, 0, 0, 0, 0, 1],
-            [1, 1, 1, 1, 1, 1, 1, 1],
-        ]
+        terrain_map = self._generate_default_map()
         
         # Converte o mapa de terrenos para um mapa de custos reais
         terrain_types = list(self.costs.keys())
@@ -34,6 +25,19 @@ class Board:
         
         # O menor custo possível em uma casa transitável (será útil para a heurística)
         self.min_cost = min(c for c in self.costs.values() if c != math.inf)
+
+    def _generate_default_map(self):
+        terrain_map = [
+            [1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 2, 2, 1, 0, 1],
+            [1, 0, 1, 3, 3, 1, 0, 1],
+            [1, 0, 1, 3, 3, 1, 0, 1],
+            [1, 0, 1, 2, 2, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1],
+        ]
+        return terrain_map
 
     def get_cost(self, position):
         """ Retorna o custo para entrar em uma determinada posição (x, y). """
