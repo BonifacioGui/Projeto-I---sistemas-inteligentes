@@ -64,3 +64,11 @@ class Board:
         if self.grid[y][x] == math.inf:
             return False
         return True
+
+    def randomize(self):
+        """
+        Refaz o tabuleiro com um novo mapa aleatório.
+        Mantém os mesmos custos definidos em self.costs.
+        """
+        terrain_map = self._generate_random_map()
+        self._build_grid_from_map(terrain_map)
