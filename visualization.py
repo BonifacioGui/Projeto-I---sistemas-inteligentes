@@ -291,8 +291,35 @@ class Visualizer:
                     #As teclas abaixo só fazem sentido quando estamos no modo principal de busca
                     elif self.view_mode == 'search':
 
+                        #N: gera um novo tabuleiro aleatório
+                        if ev.key == pygame.K_n and not self.search_running:
+                            # 1. Gera um novo layout de terreno
+                            self.board.randomize()
+
+                            # 2. Reseta o estado interno da busca
+                            self.reset_state()
+
+                            # 3. Mantém as mesmas posições inicial e final recebidas na chamada de run()
+                            self.start_pos = start_pos
+                            self.end_pos = end_pos
+
+                            # 4. Mantém a heurística atualmente selecionada
+                            self.current_heuristic_name = h_names[curr_idx]
+                            self.current_heuristic_func = heuristic_options[self.current_heuristic_name]
+
+                            # 5. Limpa resultados de execuções antigas, porque o mapa mudou
+                            self.results = {name: None for name in heuristic_options.keys()}
+
+                            # Garante que estamos no modo de busca normal e com todos os toggles limpos
+                            self.view_mode = 'search'
+                            self.show_g_map = False
+                            self.show_closed_list_toggle = False
+                            self.show_open_list_toggle = False
+
+                            print("[N] Novo tabuleiro gerado.")
+
                         #Espaço: iniciar a busca A*
-                        if ev.key == pygame.K_SPACE and not self.search_running:
+                        elif ev.key == pygame.K_SPACE and not self.search_running:
                             print(f"Iniciando: {self.current_heuristic_name}...");
                             start_t = time.time();
 
