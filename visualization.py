@@ -251,69 +251,134 @@ class Visualizer:
 
     # ------------------------------ Main loop ---------------------------------
     def run(self, start_pos, end_pos, heuristic_options, search_function):
+        # Estado inicial do visualizador
         self.reset_state(); self.start_pos=start_pos; self.end_pos=end_pos
+
+        # Dicionário onde vamos guardar métricas de cada heurística rodando (nodes, tempo, custo final, etc)
         self.results = {name: None for name in heuristic_options.keys()}
+
+        #Lista com nomes das heurísticas, ex: ["H1 (Chebyshev)", "H2 (Cavalo)"]
         h_names=list(heuristic_options.keys())
         if len(h_names)<2: raise ValueError('>= 2 heurísticas')
+
+        #Índice da heurística atualmente selecionada (Começa na primeira)
         curr_idx=0; self.current_heuristic_name=h_names[curr_idx]
         self.current_heuristic_func=heuristic_options[self.current_heuristic_name]
+
+        #Variáveis de controle de animação e loop
         pulse_t, start_t = 0.0, 0; running = True; last_update_t = pygame.time.get_ticks()
 
+        #Loop principal da aplicação (render + input + lógica de busca)
         while running:
+            #clock.tick limita o FPS; dt é o tempo entre frames
             now = pygame.time.get_ticks(); dt = self.clock.tick(self.fps)/1000.0; pulse_t += dt
+
             # --- Event Handling ---
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT: running = False
+
                 elif ev.type == pygame.KEYDOWN:
+                    #Tecla R: resetar estado
                     if ev.key == pygame.K_r:
+                        #Se estamos vendo o gráfico, "r" volta para o tabuleiro
                         if self.view_mode=='chart': self.view_mode='search'; print("Voltando.")
+                        #Reset completo da simulação para o tabuleiro atual
                         else: self.reset_state(); self.start_pos=start_pos; self.end_pos=end_pos; self.results={n:None for n in h_names}; self.current_heuristic_name=h_names[0]; self.current_heuristic_func=heuristic_options[self.current_heuristic_name]; self.show_g_map=False; self.view_mode='search'; self.show_closed_list_toggle=False; self.show_open_list_toggle=False; print("--- RESETADO ---") # Reseta toggles
+
+                    #Tecla ESC é outro modo de saur do gráfico.
                     elif ev.key == pygame.K_ESCAPE and self.view_mode == 'chart': self.view_mode = 'search'; print("Voltando.")
+
+                    #As teclas abaixo só fazem sentido quando estamos no modo principal de busca
                     elif self.view_mode == 'search':
-                        if ev.key == pygame.K_SPACE and not self.search_running: print(f"Iniciando: {self.current_heuristic_name}..."); start_t = time.time(); self.search_generator = search_function(self.board, start_pos, end_pos, self.current_heuristic_func); self.search_running=True; self.final_path=None; self.g_costs={}; self.nodes_expanded=0; self.open_set=set(); self.closed_set=set(); self.current=start_pos; self.animation_start=None; self.show_g_map=False; self.show_closed_list_toggle=False; self.show_open_list_toggle=False # Reseta toggles
+
+                        #Espaço: iniciar a busca A*
+                        if ev.key == pygame.K_SPACE and not self.search_running:
+                            print(f"Iniciando: {self.current_heuristic_name}...");
+                            start_t = time.time();
+
+                            #Cria o gerador do A* com a heurística atual
+                            self.search_generator = search_function(self.board, start_pos, end_pos, self.current_heuristic_func);
+
+                            #Marca que a busca está acontecendo
+                            self.search_running=True;
+
+                            #Limpa dados visuais anteriores
+                            self.final_path=None; self.g_costs={}; self.nodes_expanded=0; self.open_set=set(); self.closed_set=set(); self.current=start_pos; self.animation_start=None; self.show_g_map=False; self.show_closed_list_toggle=False; self.show_open_list_toggle=False
+
+                        #[1] / [2]: trocar a heurística ativa ANTES de rodar
                         elif ev.key>=pygame.K_1 and ev.key<pygame.K_1+len(h_names) and not self.search_running:
                             curr_idx = ev.key - pygame.K_1
                             if 0 <= curr_idx < len(h_names): self.current_heuristic_name=h_names[curr_idx]; self.current_heuristic_func=heuristic_options[self.current_heuristic_name]; print(f"Heurística: {self.current_heuristic_name}")
+
+                        #G: alternar axibição do mapa de custo G (heatmap)
                         elif ev.key == pygame.K_g and self.final_path: self.show_g_map = not self.show_g_map; print(f"Mapa G: {'On' if self.show_g_map else 'Off'}")
-                        # --- MUDANÇA: Tecla V ---
+
+                        #V: alternar visualização da área explorada (closed_set final)
                         elif ev.key == pygame.K_v and not self.search_running and self.last_closed_set:
                              self.show_closed_list_toggle = not self.show_closed_list_toggle
                              print(f"Mostrar Exploração (Verde Musgo): {'Ligado' if self.show_closed_list_toggle else 'Desligado'}")
-                        # --- MUDANÇA: Tecla O ---
+
+                        #O: alternar visualização da fronteira final (open_set final)
                         elif ev.key == pygame.K_o and not self.search_running and self.last_open_set:
                              self.show_open_list_toggle = not self.show_open_list_toggle
                              print(f"Mostrar Candidatos Finais (Azul): {'Ligado' if self.show_open_list_toggle else 'Desligado'}")
-                        # --- FIM DA MUDANÇA ---
+
+                        #C: ir para o modo gráfico comparativo (chart), caso já tivermos resultados das heurísticas
                         elif ev.key == pygame.K_c and all(r is not None for r in self.results.values()) and not self.search_running:
                              if all(isinstance(r, dict) and r.get('nodes', 0) > 0 for r in self.results.values()): self.view_mode = 'chart'; print("Gráfico.")
                              else: print("Execute ambas.")
 
-            # --- Advance Search ---
+            # --- Advance Search (execução incremental do A*) ---
             if self.search_running and self.search_generator and self.view_mode == 'search':
-                if now - last_update_t > 50: # Throttle
+
+                #Throttle para não atualizar rápido demais
+                if now - last_update_t > 50:
                     try:
+
+                        #Pega o próximo "frame" da busca A*
                         state = next(self.search_generator)
+
+                        #Atualiza conjuntos de abertos/fechados e nó atual
                         self.open_set=state.get('open',set()); self.closed_set=state.get('closed',set())
-                        self.current=state.get('current',self.current); self.nodes_expanded=len(self.closed_set)
+                        self.current=state.get('current',self.current);
+
+                        #Contador de nós expandidos
+                        self.nodes_expanded=len(self.closed_set)
+
                         last_update_t = now
+
                     except StopIteration as e:
+                        #A busca terminou. Aqui nós colhemos os resultados finais
                         end_t = time.time(); exec_t = (end_t - start_t) * 1000
                         try:
                             path, nodes, g_costs, initial_h = e.value
                             self.final_path=path; self.nodes_expanded=nodes; self.g_costs=g_costs
-                            # --- MUDANÇA: Armazena ambas as listas finais ---
+
+                            #Guardar as versoes finais da open/closed da busca atual
                             self.last_closed_set = self.closed_set.copy()
-                            self.last_open_set = self.open_set.copy() # Salva a Aberta final
-                            # --- FIM DA MUDANÇA ---
+                            self.last_open_set = self.open_set.copy()
+
+
+                            #Calcula custo total do caminho encontrado
                             p_cost = 0
-                            if path: p_cost=g_costs.get(path[-1],0); print(f"Fim: {nodes} nós. C:{p_cost:.2f}. H:{initial_h:.2f}. T:{exec_t:.2f} ms"); self.results[self.current_heuristic_name]={'nodes':nodes,'time':exec_t,'cost':p_cost,'initial_h':initial_h}; self.animation_start=time.time() if path else None
+                            if path:
+                                p_cost=g_costs.get(path[-1],0);
+                                print(f"Fim: {nodes} nós. C:{p_cost:.2f}. H:{initial_h:.2f}. T:{exec_t:.2f} ms");
+                                self.results[self.current_heuristic_name]={'nodes':nodes,'time':exec_t,'cost':p_cost,'initial_h':initial_h};
+                                #Inicia animação do cavalo se tem caminho
+                                self.animation_start=time.time() if path else None
                             else: print(f"Fim: Ñ enc. {nodes} nós. T:{exec_t:.2f} ms"); self.results[self.current_heuristic_name]={'nodes':nodes,'time':exec_t,'cost':float('inf'),'initial_h':initial_h}
                         except ValueError: print("Erro: A* ñ ret 4 val."); self.final_path=None; self.nodes_expanded=0; self.g_costs={}; self.results[self.current_heuristic_name]=None; self.last_closed_set = set(); self.last_open_set = set()
                         except Exception as ex: print(f"Erro: {ex}"); self.final_path=None; self.nodes_expanded=0; self.g_costs={}; self.results[self.current_heuristic_name]=None; self.last_closed_set = set(); self.last_open_set = set()
-                        self.search_running=False; self.search_generator=None
-                        # Não limpa open/closed aqui para permitir toggle imediato
 
-            # --- Draw Frame ---
+                        #Marca que terminou, a busca não está mais rodando
+                        self.search_running=False;
+
+                        #Não limpa open/closed aqui para permitir toggle imediato
+                        self.search_generator=None
+
+
+            # --- Draw Frame (renderização) ---
             if self.view_mode == 'search':
                 # Ordem: Fundo -> Tabuleiro/Busca -> Grade -> Heatmap -> Caminho -> Marcadores -> Sidebar
                 self.screen.fill(PALETTE.get('bg', (0,0,0)))
@@ -324,10 +389,9 @@ class Visualizer:
                 self._draw_markers_and_knight(pulse_t)
                 self._draw_sidebar()
             elif self.view_mode == 'chart':
+                #Tabela de gráfico comparando heurísticas
                 self._draw_chart_view(heuristic_options)
 
             pygame.display.flip()
 
         pygame.quit()
-
-# --- Fim do Arquivo ---
