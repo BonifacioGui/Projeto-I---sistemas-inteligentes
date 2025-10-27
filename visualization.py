@@ -203,6 +203,7 @@ class Visualizer:
         ctrl_sp = 25
         # --- MUDANÇA: Adiciona tecla O ---
         controls = ['[1] H1 (Cheby)   [2] H2 (Cavalo)', '[ESPAÇO]        - Iniciar Busca',
+                    '[N]                  - Novo Tabuleiro Aleatório',
                     '[G]                  - Mapa de Custo G',
                     '[V]                  - Mostrar Exploração (Verde)',
                     '[O]                  - Mostrar Candidatos (Azul)', # Nova tecla
