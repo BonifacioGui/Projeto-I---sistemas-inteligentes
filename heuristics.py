@@ -20,34 +20,56 @@ def _get_min_knight_moves(start_pos, end_pos):
     Calcula o número MÍNIMO de movimentos de cavalo entre dois pontos
     em um tabuleiro VAZIO usando Busca em Largura (BFS).
     """
+
+    # Verifica se já existe o resultado armazenado em cache.
+    # Isso evita recalcular a mesma distância entre dois pontos.
     if (start_pos, end_pos) in _knight_dist_cache:
         return _knight_dist_cache[(start_pos, end_pos)]
 
+    # Cria uma fila (queue) para armazenar as posições a explorar.
+    # Cada elemento contém: (posição_atual, distância_em_movimentos)
     queue = deque([(start_pos, 0)])
+
+    # Conjunto de posições já visitadas, evitando revisitar casas do tabuleiro.
     visited = {start_pos}
-    
+
+    # Define todos os movimentos possíveis do cavalo no xadrez.
+    # Cada tupla representa o deslocamento (dx, dy).
     knight_moves = [
         (1, 2), (1, -2), (-1, 2), (-1, -2),
         (2, 1), (2, -1), (-2, 1), (-2, -1)
     ]
 
+    # Enquanto ainda existirem posições a explorar na fila...
     while queue:
+        # Retira a próxima posição (FIFO) para explorar.
         current_pos, dist = queue.popleft()
 
+        # Se a posição atual for o destino, encontramos o número mínimo de saltos.
+        # Armazena o resultado em cache e o retorna.
         if current_pos == end_pos:
             _knight_dist_cache[(start_pos, end_pos)] = dist
             return dist
 
+        # Explora todos os possíveis movimentos do cavalo a partir da posição atual.
         for move in knight_moves:
+            # Calcula a próxima posição aplicando o deslocamento.
             next_pos = (current_pos[0] + move[0], current_pos[1] + move[1])
-            
+
+            # Verifica se a nova posição está dentro dos limites do tabuleiro (8x8)
+            # e se ainda não foi visitada.
             if (0 <= next_pos[0] < 8 and 
                 0 <= next_pos[1] < 8 and 
                 next_pos not in visited):
-                
+
+                # Marca a posição como visitada para evitar ciclos.
                 visited.add(next_pos)
+
+                # Adiciona a nova posição à fila com +1 no número de movimentos.
                 queue.append((next_pos, dist + 1))
-    
+
+    # Caso o destino não seja alcançável (não deveria ocorrer num tabuleiro 8x8),
+    # retorna infinito como fallback de segurança.
     return float('inf') 
 
 
