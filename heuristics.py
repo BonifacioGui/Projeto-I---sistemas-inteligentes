@@ -81,24 +81,3 @@ def h2_knight_distance(current_pos, end_pos, min_cost):
     """
     knight_steps = _get_min_knight_moves(current_pos, end_pos)
     return knight_steps * min_cost
-
-# --- Funções não utilizadas (mantidas para referência) ---
-
-def h0_dijkstra(current_pos, end_pos, min_cost):
-    """
-    H0 (Dijkstra): A Heurística Admissível mais fraca.
-    h(n) = 0.
-    """
-    return 0
-
-def h1_manhattan(current_pos, end_pos, min_cost):
-    """
-    H_M (Manhattan): Heurística Não-Admissível.
-    Implementação baseada na Dica do projeto.
-    NOTA: Esta heurística provou ser NÃO-ADMISSÍVEL nos testes,
-    pois superestimou o custo real (ex: estimou 5.0 para um custo real de 4.50).
-    """
-    dx = abs(current_pos[0] - end_pos[0])
-    dy = abs(current_pos[1] - end_pos[1])
-    distance = dx + dy
-    return distance * min_cost
